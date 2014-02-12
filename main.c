@@ -134,14 +134,15 @@ void initialAssignment(void)
 
 
 int seen[TUTORS];
+int delta[TUTORS];
 int cycle;
 
 
-int push(int ta, int delta) {
+int push(int ta, int d) {
 
 	if (seen[ta]) {
-		if (delta < 0) {
-			printf("cycle%d: %d", delta, ta);
+		if (d < delta[ta]) {
+			printf("cycle%d: %d", d - delta[ta], ta);
 			cycle = ta;
 			return 1;
 		}
@@ -150,8 +151,8 @@ int push(int ta, int delta) {
 
 	if (capacity[ta] > 0) {
 		//printf("capacity[%d] = %d\n", ta, capacity[ta]);
-		if (delta < 0) {
-			printf("path%d: %d", delta, ta);
+		if (d < 0) {
+			printf("path%d: %d", d, ta);
 			cycle = -1;
 			return 1;
 		}
@@ -161,6 +162,7 @@ int push(int ta, int delta) {
 	/* too many students here */
 
 	seen[ta] = 1;
+	delta[ta] = d;
 
 	int n = -1;
 	for (int s = head[ta]; s >= 0; s = n) {
@@ -168,17 +170,17 @@ int push(int ta, int delta) {
 		for (int tb = 0; tb < TUTORS; tb++) {
 			if (ta == tb) continue;
 
-			if (push(tb, delta + vote[s][tb] - vote[s][ta])) {
+			if (push(tb, d + vote[s][tb] - vote[s][ta])) {
 				if (cycle < 0) { /* we are on a path */
-					if (delta < 0) { /* we are on the useful part */
-						printf(" <%d- %d", s, tb);
+					if (d < 0) { /* we are on the useful part */
+						printf(" <%d- %d", s, ta);
 						move(s, ta, tb);
 						seen[ta] = 0;
 						return 1;
 					}
 					/* path up to here is useless */
 				} else { /* we are on a cycle */
-					printf(" <%d- %d", s, tb);
+					printf(" <%d- %d", s, ta);
 					move(s,ta, tb);
 					if (ta != cycle) { /* this is not the start */
 						seen[ta] = 0;
@@ -210,16 +212,16 @@ int main(void)
 	for (int ta = 0; ta < TUTORS; ta++) {
 		int n = -1;
 		seen[ta] = 1;
+		delta[ta] = 0;
 		for (int s = head[ta]; s >= 0; s = n) {
 			n = next[s];
-			printf("init: %d\n", s);
 			for (int tb = 0; tb < TUTORS; tb++) {
 				if (ta == tb) continue;
 				int d = vote[s][tb] - vote[s][ta];
 				if (d < 0) {
 					if (push(tb, d)) {
 						move(s, ta, tb);
-						printf(" <%d- %d top\n", s, tb);
+						printf(" <%d- %d top\n", s, ta);
 						break;
 					}
 				}
