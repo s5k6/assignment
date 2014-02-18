@@ -1,65 +1,171 @@
-#include <stdlib.h>
+#define _POSIX_C_SOURCE 200809L
+
 #include <stdio.h>
 #include <err.h>
 #include <assert.h>
-#include "parser.h"
-
-
-#define forTutors(t) for (int t = 0; t < (int)fi->tutors; t++)
-#define forStudents(s) for (int s = 0; s < (int)fi->students; s++)
-#define forMembers(s,t) for (int s = st->head[t]; s >= 0; s = st->next[s])
-
-typedef struct {
-	int *capacity;
-	int *head;
-	int *prev;
-	int *next;
-	int *seen;
-	int *delta;
-	int cycle;
-} status;
+#include <stdlib.h>
+#include <string.h>
 
 
 
-void integrity(fixed const *fi, status const *st)
+int students, tutors, **vote, **cost;
+char **name, **slot;
+
+
+
+#define forTutor(t) for (int t = 0; t < tutors; t++)
+#define forStudent(s) for (int s = 0; s < students; s++)
+#define forMember(s,t) for (int s = head[t]; s >= 0; s = next[s])
+
+
+void readVotes(void)
 {
-	int tot = 0;
-	int checked[fi->students];
+	int alloc = 10;
+	students = 0;
 
-	forStudents(i) checked[i] = 0;
+	name = malloc((size_t)alloc * sizeof(char*));
+	assert(name);
+	vote = malloc((size_t)alloc * sizeof(int*));
+	assert(vote);
 
-	forTutors(t) {
-		if (st->head[t] >= 0) {
-			assert(st->prev[st->head[t]] == -1);
-			forMembers(s,t) {
-				tot++;
-				assert(checked[s] == 0);
-				checked[s] = 1;
-				assert((s == st->head[t] && st->prev[s] == -1) || st->next[st->prev[s]] == s);
-				assert(st->next[s] == -1 || st->prev[st->next[s]] == s);
+	size_t size = 100;
+	char *buf = malloc(size);
+
+	ssize_t len;
+	while ((len = getline(&buf, &size, stdin)) > -1) {
+		char *saveptr;
+		name[students] = strtok_r(buf, " \t\n\0", &saveptr);
+		if (name[students]) {
+			int seen[tutors], j = 0;
+			char *v;
+			vote[students] = malloc((size_t)tutors * sizeof(int));
+			assert(vote[students]);
+
+			forTutor(k) {
+				seen[k] = 0;
+				vote[students][k] = -1;
 			}
-		} else assert(st->head[t] == -1);
+
+			while ((v = strtok_r(NULL, " \t\n\0", &saveptr)) != NULL) {
+				if (j == tutors) errx(1, "excessive choice `%s`", v);
+				forTutor(k) {
+					if (strcmp(slot[k], v) == 0) {
+						if (seen[k]) errx(1, "repeated `%s`", v);
+						vote[students][j] = k;
+						seen[k] = 1;
+						break;
+					}
+				}
+				if (vote[students][j] < 0)
+					errx(1, "invalid choice `%s`", v);
+				j++;
+			}
+			buf = malloc(size);
+			students++;
+			if (students == alloc) {
+				alloc *= 2;
+				name = realloc(name, (size_t)alloc * sizeof(char*));
+				assert(name);
+				vote = realloc(vote, (size_t)alloc * sizeof(int*));
+				assert(vote);
+			}
+		}
 	}
-	assert(tot = fi->students);
+
+	/* calculate cost from vote */
+	cost = malloc((size_t)students * sizeof(int*));
+	assert(cost);
+	forStudent(s) {
+		cost[s] = malloc((size_t)tutors * sizeof(int));
+		assert(cost[s]);
+		forTutor(v) {
+			assert(vote[s][v] >= 0);
+			cost[s][vote[s][v]] = v;
+		}
+	}
 }
 
 
 
-void show(fixed const *fi, status *st)
+int *maximum, *capacity, *head, *prev, *next;
+
+
+
+void integrity(void)
+{
+	int tot = 0;
+	int checked[students];
+
+	forStudent(i) {
+		checked[i] = 0;
+	}
+
+	forTutor(t) {
+		if (head[t] >= 0) {
+			assert(prev[head[t]] == -1);
+			forMember(s,t) {
+				tot++;
+				assert(checked[s] == 0);
+				checked[s] = 1;
+				assert((s == head[t] && prev[s] == -1) || next[prev[s]] == s);
+				assert(next[s] == -1 || prev[next[s]] == s);
+			}
+		} else assert(head[t] == -1);
+	}
+	assert(tot = students);
+}
+
+
+
+void initialAssignment(void)
+{
+	head = malloc((size_t)tutors * sizeof(int)); assert(head);
+	capacity = malloc((size_t)tutors * sizeof(int)); assert(capacity);
+	prev = malloc((size_t)students * sizeof(int)); assert(prev);
+	next = malloc((size_t)students * sizeof(int)); assert(next);
+
+	forTutor(t) {
+		head[t] = -1;
+		capacity[t] = maximum[t];
+	}
+
+	forStudent(s) {
+		int c = tutors, a = -1;
+		forTutor(t) {
+            if (vote[s][t] < c && capacity[t] > 0) {
+                a = t;
+                c = vote[s][t];
+            }
+        }
+        assert(a > -1);
+
+        capacity[a]--;
+        prev[s] = -1;
+        next[s] = head[a];
+        if (head[a] >= 0)
+            prev[head[a]] = s;
+        head[a] = s;
+    }
+	integrity();
+}
+
+
+
+void show(void)
 {
 	int sum = 0, mem = 0;
-	forTutors(t) {
+	forTutor(t) {
 		int sum1 = 0, mem1 = 0;
-		printf("%s:", fi->slot[t]);
-		forMembers(s,t) {
-			printf(" %s", fi->name[s]);
-			sum1 += fi->cost[s][t];
+		printf("%s:", slot[t]);
+		forMember(s,t) {
+			printf(" %s", name[s]);
+			sum1 += cost[s][t];
 			mem1++;
 		}
 		printf("; sum=%d, memb=%d\n", sum1, mem1);
 		sum += sum1;
 		mem += mem1;
-		assert(mem1 + st->capacity[t] == fi->capacity[t]);
+		assert(mem1 + capacity[t] == maximum[t]);
 	}
 	printf("total sum = %d, members = %d\n", sum, mem);
 	printf("--------------------\n");
@@ -67,151 +173,88 @@ void show(fixed const *fi, status *st)
 
 
 
-status *mkstatus(fixed const *fi)
-{
-	status *st = malloc(sizeof(status));
-	assert(st);
-
-	st->capacity = malloc((size_t)fi->tutors * sizeof(int));
-	assert(st->capacity);
-	st->head = malloc((size_t)fi->tutors * sizeof(int));
-	assert(st->head);
-	st->prev = malloc((size_t)fi->students * sizeof(int));
-	assert(st->prev);
-	st->next = malloc((size_t)fi->students * sizeof(int));
-	assert(st->next);
-
-	forTutors(t) {
-		st->head[t] = -1;
-		st->capacity[t] = fi->capacity[t];
-	}
-	return st;
-}
-
-
-
-status *initialAssignment1(fixed const *fi)
-{
-	status *st = mkstatus(fi);
-
-	int a = 0;
-	forStudents(s) {
-		while (st->capacity[a] < 1) a++;
-        st->capacity[a]--;
-        st->prev[s] = -1;
-        st->next[s] = st->head[a];
-        if (st->head[a] >= 0)
-            st->prev[st->head[a]] = s;
-        st->head[a] = s;
-    }
-	integrity(fi, st);
-
-	return st;
-}
-
-
-
-status *initialAssignment2(fixed const *fi)
-{
-	status *st = mkstatus(fi);
-
-	forStudents(s) {
-		int c = -1, a = -1;
-		forTutors(t) {
-			if ((c < 0 || fi->cost[s][t] < c) && st->capacity[t] > 0) {
-                a = t;
-                c = fi->cost[s][t];
-            }
-        }
-        assert(a > -1);
-
-        st->capacity[a]--;
-        st->prev[s] = -1;
-        st->next[s] = st->head[a];
-        if (st->head[a] >= 0)
-            st->prev[st->head[a]] = s;
-        st->head[a] = s;
-    }
-	integrity(fi, st);
-
-	return st;
-}
-
-
-
 /* This actually performs the relocation of a student, and updates all the
    data structures.  */
 
-void move(fixed const *const fi, status *const st, int const s, int const ta, int const tb)
+void move(int const s, int const ta, int const tb)
 {
 	assert(ta != tb);
-	assert(0 <= ta && ta < fi->tutors && 0 <= tb && tb < fi->tutors);
+	assert(0 <= ta && ta < tutors && 0 <= tb && tb < tutors);
 	assert(0 <= s);
-	assert(s < fi->students);
-	assert(st->head[ta] >= 0);
+	assert(s < students);
+	assert(head[ta] >= 0);
 
 	int j = s;
-	while (st->prev[j] >= 0) j = st->prev[j];
-	assert(st->head[ta] == j);
+	while (prev[j] >= 0) j = prev[j];
+	assert(head[ta] = j);
 
-	int const sn = st->next[s];
-	int const sp = st->prev[s];
-	st->next[s] = st->head[tb];
-	st->prev[s] = -1;
+	int const sn = next[s];
+	int const sp = prev[s];
+	next[s] = head[tb];
+	prev[s] = -1;
 
 	if (sp < 0) {
-		assert(st->head[ta] == s);
-		st->head[ta] = sn;
+		assert(head[ta] == s);
+		head[ta] = sn;
 	} else {
-		assert(st->head[ta] != s);
-		st->next[sp] = sn;
+		assert(head[ta] != s);
+		next[sp] = sn;
 	}
 
-	if (sn >= 0) st->prev[sn] = sp;
+	if (sn >= 0) prev[sn] = sp;
 
-	if (st->head[tb] >= 0) st->prev[st->head[tb]] = s;
-	st->head[tb] = s;
+	if (head[tb] >= 0) prev[head[tb]] = s;
+	head[tb] = s;
 
-	st->capacity[ta]++;
-	st->capacity[tb]--;
 
-	integrity(fi, st);
+	capacity[ta]++;
+	capacity[tb]--;
+
+	integrity();
 }
 
 
 
-int push(fixed const *fi, status *st, int ta, int d)
-{
-	if (st->seen[ta]) {
-		if (d < st->delta[ta]) {
-			printf("cycle%d: %d", d - st->delta[ta], ta);
-			st->cycle = ta;
+
+
+
+int *seen;
+int *delta;
+int cycle;
+
+
+int push(int ta, int d) {
+
+	if (seen[ta]) {
+		if (d < delta[ta]) {
+			printf("cycle%d: %d", d - delta[ta], ta);
+			cycle = ta;
 			return 1;
 		}
 		return 0;
 	}
 
-	if (st->capacity[ta] > 0) {
-		//printf("st->capacity[%d] = %d\n", ta, st->capacity[ta]);
+	if (capacity[ta] > 0) {
+		//printf("capacity[%d] = %d\n", ta, capacity[ta]);
 		if (d < 0) {
 			printf("path%d: %d", d, ta);
-			st->cycle = -1;
+			cycle = -1;
 			return 1;
 		}
 		return 0;
 	}
 
-	// too many students here
+	/* too many students here */
 
-	st->seen[ta] = 1;
-	st->delta[ta] = d;
+	seen[ta] = 1;
+	delta[ta] = d;
 
-	forTutors(tb) {
+	forTutor(tb) {
 		if (ta == tb) continue;
 
 		int w = -1, wc, sc;
-		forMembers(s,ta) {
-			sc = fi->cost[s][tb] - fi->cost[s][ta];
+		forMember(s,ta) {
+			sc = vote[s][tb] - vote[s][ta];
 			if (w < 0 || sc < wc) {
 				w = s;
 				wc = sc;
@@ -220,51 +263,67 @@ int push(fixed const *fi, status *st, int ta, int d)
 		if (w < 0) continue;
 
 
-		if (push(fi, st, tb, d + wc)) {
-			if (st->cycle < 0) { // we are on a path
-				if (d < 0) { // we are on the useful part
-					printf(" <=(%d,%d)= %d", w, wc, ta);
-					move(fi, st, w, ta, tb);
-					st->seen[ta] = 0;
+		if (push(tb, d + wc)) {
+			if (cycle < 0) { /* we are on a path */
+				if (d < 0) { /* we are on the useful part */
+					printf(" <%d- %d", w, ta);
+					move(w, ta, tb);
+					seen[ta] = 0;
 					return 1;
 				}
-				// path up to here is useless
-			} else { // we are on a cycle
-				printf(" <=(%d,%d)= %d", w, wc, ta);
-				move(fi, st, w, ta, tb);
-                if (ta != st->cycle) { // this is not the start
-					st->seen[ta] = 0;
+				/* path up to here is useless */
+			} else { /* we are on a cycle */
+				printf(" <%d- %d", w, ta);
+				move(w, ta, tb);
+				if (ta != cycle) { /* this is not the start */
+					seen[ta] = 0;
 					return 1;
 				}
 				printf("\n");
-                // just closed a cycle
+				/* just closed a cycle */
 				break;
 			}
 		}
 
 	}
 
-	st->seen[ta] = 0;
+	seen[ta] = 0;
 	return 0;
 }
 
 
 
-int assign(fixed const *fi, status *st)
+int main(int argc, char **argv)
 {
-	int found = 0;
 
-	forTutors(t) st->seen[t] = 0;
+	tutors = argc - 1;
+	slot = argv + 1;
 
-	forTutors(ta) {
-		st->seen[ta] = 1;
-		st->delta[ta] = 0;
-		forTutors(tb) {
+	/* get this from command line as well */
+	maximum = malloc((size_t)tutors * sizeof(int)); assert(maximum);
+	forTutor(t) maximum[t] = 20;
+
+	readVotes();
+
+	initialAssignment();
+	show();
+
+
+	seen = malloc((size_t)tutors * sizeof(int)); assert(seen);
+	delta = malloc((size_t)tutors * sizeof(int)); assert(delta);
+
+	forTutor(t)
+		seen[t] = 0;
+
+	forTutor(ta) {
+		seen[ta] = 1;
+		delta[ta] = 0;
+		forTutor(tb) {
 			if (ta == tb) continue;
 
 			int w = -1, wc, sc;
-			forMembers(s,ta) {
-				sc = fi->cost[s][tb] - fi->cost[s][ta];
+			forMember(s,ta) {
+				sc = vote[s][tb] - vote[s][ta];
 				if (w < 0 || sc < wc) {
 					w = s;
 					wc = sc;
@@ -274,42 +333,18 @@ int assign(fixed const *fi, status *st)
 
 
 			if (wc < 0) {
-				if (push(fi, st, tb, wc)) {
-					printf(" <=(%d,%d)= %d top\n", w, wc, ta);
-					move(fi, st, w, ta, tb);
-					found = 1;
+				if (push(tb, wc)) {
+					move(w, ta, tb);
+					printf(" <%d- %d top\n", w, ta);
 					break;
 				}
 			}
 		}
-		st->seen[ta] = 0;
+		seen[ta] = 0;
 	}
 
-	return found;
-}
 
-
-
-int main(int argc, char const * const argv[])
-{
-	if (argc < 3) errx(1, "insufficient arguments");
-
-	fixed const *fi = readVotes(argc - 1, argv + 1);
-	assert(fi);
-
-	warnx("students = %d", fi->students);
-
-	status *st = initialAssignment1(fi);
-	show(fi, st);
-	free(st);
-
-	st = initialAssignment2(fi);
-	show(fi, st);
-
-	while (assign(fi, st)) show(fi, st);
-
-
-	show(fi, st);
+	show();
 
 	return 0;
 }
