@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 
 
@@ -20,7 +21,7 @@ char **name, **slot;
 
 void readVotes(void)
 {
-	int alloc = 10;
+	int alloc = 10, lino = 0;
 	students = 0;
 
 	name = malloc((size_t)alloc * sizeof(char*));
@@ -33,7 +34,9 @@ void readVotes(void)
 
 	ssize_t len;
 	while ((len = getline(&buf, &size, stdin)) > -1) {
-		char *saveptr;
+		lino += 1;
+		char *saveptr = strchr(buf, '#');
+		if (saveptr) *saveptr = '\0';
 		name[students] = strtok_r(buf, " \t\n\0", &saveptr);
 		if (name[students]) {
 			int seen[tutors], j = 0;
@@ -47,17 +50,17 @@ void readVotes(void)
 			}
 
 			while ((v = strtok_r(NULL, " \t\n\0", &saveptr)) != NULL) {
-				if (j == tutors) errx(1, "excessive choice `%s`", v);
+				if (j == tutors) errx(1, "line %d: excessive choice `%s`", lino, v);
 				forTutor(k) {
 					if (strcmp(slot[k], v) == 0) {
-						if (seen[k]) errx(1, "repeated `%s`", v);
+						if (seen[k]) errx(1, "line %d: repeated `%s`", lino, v);
 						vote[students][j] = k;
 						seen[k] = 1;
 						break;
 					}
 				}
 				if (vote[students][j] < 0)
-					errx(1, "invalid choice `%s`", v);
+					errx(1, "line %d: invalid choice `%s`", lino, v);
 				j++;
 			}
 			buf = malloc(size);
@@ -71,16 +74,21 @@ void readVotes(void)
 			}
 		}
 	}
+}
 
+
+
+void calcSimpleCost(void) {
 	/* calculate cost from vote */
 	cost = malloc((size_t)students * sizeof(int*));
 	assert(cost);
 	forStudent(s) {
 		cost[s] = malloc((size_t)tutors * sizeof(int));
 		assert(cost[s]);
+		int u = 0;
 		forTutor(v) {
-			assert(vote[s][v] >= 0);
-			cost[s][vote[s][v]] = v;
+			if (vote[s][v] >= 0) u = v;
+			cost[s][vote[s][v]] = u;
 		}
 	}
 }
@@ -112,17 +120,21 @@ void integrity(void)
 			}
 		} else assert(head[t] == -1);
 	}
-	assert(tot = students);
+	assert(tot == students);
 }
 
 
 
 void initialAssignment(void)
 {
-	head = malloc((size_t)tutors * sizeof(int)); assert(head);
-	capacity = malloc((size_t)tutors * sizeof(int)); assert(capacity);
-	prev = malloc((size_t)students * sizeof(int)); assert(prev);
-	next = malloc((size_t)students * sizeof(int)); assert(next);
+	head = malloc((size_t)tutors * sizeof(int));
+	assert(head);
+	capacity = malloc((size_t)tutors * sizeof(int));
+	assert(capacity);
+	prev = malloc((size_t)students * sizeof(int));
+	assert(prev);
+	next = malloc((size_t)students * sizeof(int));
+	assert(next);
 
 	forTutor(t) {
 		head[t] = -1;
@@ -132,43 +144,45 @@ void initialAssignment(void)
 	forStudent(s) {
 		int c = tutors, a = -1;
 		forTutor(t) {
-            if (vote[s][t] < c && capacity[t] > 0) {
-                a = t;
-                c = vote[s][t];
-            }
-        }
-        assert(a > -1);
+			if (vote[s][t] < c && capacity[t] > 0) {
+				a = t;
+				c = vote[s][t];
+			}
+		}
+		if (a < 0) errx(1, "Too many students");
 
-        capacity[a]--;
-        prev[s] = -1;
-        next[s] = head[a];
-        if (head[a] >= 0)
-            prev[head[a]] = s;
-        head[a] = s;
-    }
+		capacity[a]--;
+		prev[s] = -1;
+		next[s] = head[a];
+		if (head[a] >= 0)
+			prev[head[a]] = s;
+		head[a] = s;
+	}
 	integrity();
 }
 
 
 
-void show(void)
+int show(void)
 {
-	int sum = 0, mem = 0;
+	int cst = 0, mem = 0;
 	forTutor(t) {
-		int sum1 = 0, mem1 = 0;
+		int cst1 = 0, mem1 = 0;
 		printf("%s:", slot[t]);
 		forMember(s,t) {
 			printf(" %s", name[s]);
-			sum1 += cost[s][t];
+			cst1 += cost[s][t];
 			mem1++;
 		}
-		printf("; sum=%d, memb=%d\n", sum1, mem1);
-		sum += sum1;
+		printf("; cst=%d, memb=%d\n", cst1, mem1);
+		cst += cst1;
 		mem += mem1;
 		assert(mem1 + capacity[t] == maximum[t]);
 	}
-	printf("total sum = %d, members = %d\n", sum, mem);
+	printf("total cost = %d, members = %d\n", cst, mem);
 	printf("--------------------\n");
+
+	return cst;
 }
 
 
@@ -186,7 +200,7 @@ void move(int const s, int const ta, int const tb)
 
 	int j = s;
 	while (prev[j] >= 0) j = prev[j];
-	assert(head[ta] = j);
+	assert(head[ta] == j);
 
 	int const sn = next[s];
 	int const sp = prev[s];
@@ -215,19 +229,17 @@ void move(int const s, int const ta, int const tb)
 
 
 
-
-
-
 int *seen;
 int *delta;
 int cycle;
+
 
 
 int push(int ta, int d) {
 
 	if (seen[ta]) {
 		if (d < delta[ta]) {
-			printf("cycle%d: %d", d - delta[ta], ta);
+			printf("cycle,%d: %s", d - delta[ta], slot[ta]);
 			cycle = ta;
 			return 1;
 		}
@@ -235,9 +247,8 @@ int push(int ta, int d) {
 	}
 
 	if (capacity[ta] > 0) {
-		//printf("capacity[%d] = %d\n", ta, capacity[ta]);
 		if (d < 0) {
-			printf("path%d: %d", d, ta);
+			printf("path,%d: %s", d, slot[ta]);
 			cycle = -1;
 			return 1;
 		}
@@ -254,7 +265,7 @@ int push(int ta, int d) {
 
 		int w = -1, wc, sc;
 		forMember(s,ta) {
-			sc = vote[s][tb] - vote[s][ta];
+			sc = cost[s][tb] - cost[s][ta];
 			if (w < 0 || sc < wc) {
 				w = s;
 				wc = sc;
@@ -262,26 +273,26 @@ int push(int ta, int d) {
 		}
 		if (w < 0) continue;
 
-
 		if (push(tb, d + wc)) {
 			if (cycle < 0) { /* we are on a path */
 				if (d < 0) { /* we are on the useful part */
-					printf(" <%d- %d", w, ta);
+					printf(" «%s,%d« %s", name[w], wc, slot[ta]);
 					move(w, ta, tb);
 					seen[ta] = 0;
 					return 1;
 				}
+				printf(" end\n");
 				/* path up to here is useless */
 			} else { /* we are on a cycle */
-				printf(" <%d- %d", w, ta);
+				printf(" «%s,%d« %s", name[w], wc, slot[ta]);
 				move(w, ta, tb);
 				if (ta != cycle) { /* this is not the start */
 					seen[ta] = 0;
 					return 1;
 				}
-				printf("\n");
+				printf(" close\n");
 				/* just closed a cycle */
-				break;
+				//break;
 			}
 		}
 
@@ -293,25 +304,8 @@ int push(int ta, int d) {
 
 
 
-int main(int argc, char **argv)
+int assign(void)
 {
-
-	tutors = argc - 1;
-	slot = argv + 1;
-
-	/* get this from command line as well */
-	maximum = malloc((size_t)tutors * sizeof(int)); assert(maximum);
-	forTutor(t) maximum[t] = 20;
-
-	readVotes();
-
-	initialAssignment();
-	show();
-
-
-	seen = malloc((size_t)tutors * sizeof(int)); assert(seen);
-	delta = malloc((size_t)tutors * sizeof(int)); assert(delta);
-
 	forTutor(t)
 		seen[t] = 0;
 
@@ -323,7 +317,7 @@ int main(int argc, char **argv)
 
 			int w = -1, wc, sc;
 			forMember(s,ta) {
-				sc = vote[s][tb] - vote[s][ta];
+				sc = cost[s][tb] - cost[s][ta];
 				if (w < 0 || sc < wc) {
 					w = s;
 					wc = sc;
@@ -334,17 +328,96 @@ int main(int argc, char **argv)
 
 			if (wc < 0) {
 				if (push(tb, wc)) {
+					printf(" «%s,%d« %s top\n", name[w], wc, slot[ta]);
 					move(w, ta, tb);
-					printf(" <%d- %d top\n", w, ta);
-					break;
+					//break;
 				}
 			}
 		}
 		seen[ta] = 0;
 	}
 
+	return 0;
+}
 
-	show();
+
+
+void readCliArguments(char **argv)
+{
+	slot = malloc((size_t)tutors * sizeof(char *));
+	assert(slot);
+	maximum = malloc((size_t)tutors * sizeof(int));
+	assert(maximum);
+
+	forTutor(t) {
+		slot[t] = argv[t+1];
+		char *col = strchr(slot[t], '=');
+		if (!col) errx(1, "Missing `=` in argument %s", slot[t]);
+		char *endptr;
+		maximum[t] = (int)strtol(col+1, &endptr, 10);
+		if (*endptr) errx(1, "Cannot parse integer");
+		*col = '\0';
+	}
+}
+
+
+
+void evaluate(int n, int *val)
+{
+	int max = 0, min=val[0];
+	double avg = 0;
+	for (int i = 0; i < n; i++) {
+		avg += val[i];
+		if (val[i] > max) max = val[i];
+		if (val[i] < min) min = val[i];
+	}
+	avg /= n;
+	double dev = 0;
+	for (int i = 0; i < n; i++) dev += pow(avg - val[i], 2);
+	dev = sqrt(dev / n);
+	printf("min=%d max=%d avg=%.3f dev=%.3f\n", min, max, avg, dev);
+}
+
+
+
+int main(int argc, char **argv)
+{
+
+	tutors = argc - 1;
+
+	readCliArguments(argv);
+
+	readVotes();
+	calcSimpleCost();
+
+	initialAssignment();
+
+
+	seen = malloc((size_t)tutors * sizeof(int));
+	assert(seen);
+	delta = malloc((size_t)tutors * sizeof(int));
+	assert(delta);
+
+	int new, old;
+	new = show();
+	do {
+		old = new;
+		assign();
+		new = show();
+	} while (new < old);
+
+
+
+	int *off = malloc((size_t)students * sizeof(int));
+	forTutor(t) forMember(s,t) off[s] = cost[s][t];
+	printf("Cost stats  : ");
+	evaluate(students, off);
+
+	calcSimpleCost();
+
+	forTutor(t) forMember(s,t) off[s] = cost[s][t];
+	printf("Offset stats: ");
+	evaluate(students, off);
 
 	return 0;
 }

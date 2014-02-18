@@ -9,13 +9,13 @@ clean :
 	rm -f a.out main a.out *.o *.dat
 
 run : main test-90-5.dat
-	./main A B C D E <test-90-5.dat
+	./main A=20 B=20 C=20 D=20 E=20 <test-90-5.dat
 
 test-90-5.dat : mkdata
-	./mkdata >$@
+	./mkdata biased >$@
 
 main : main.o
-	gcc -o $@ $^
+	gcc -o $@ $^ -lm
 
 %.o : %.c
 	gcc $(cflags) -c -o $@ $<
