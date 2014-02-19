@@ -1,0 +1,33 @@
+      _            _
+     / \   ___ ___(_)                           Assi - pushing around students
+    / _ \ / __/ __| |                    (assistence in antisocial assignment)
+   / ___ \\__ \__ \ |
+  /_/   \_\___/___/_|
+
+Synopsis:
+
+    assi TUT=CAP ( TUT(=CAP)? )*  <  VOTES > RESULT
+
+  where
+       TUT : The name of a tutorial, use only ascii letters and digits.
+       CAP : The integral capacity of the tutorial.  If omitted, reuse the
+               capacity of the previous tutorial.
+     VOTES : The file containing the student's preferences.
+    RESULT : The file containing the resulting assignment.
+
+The file VOTES contains the votes cast by the students.  Comments are of the
+#-eol style.  Empty lines are ignored.  Other lines must have the following
+form:
+
+    NAME ( SPACE TUT ){0,n}
+
+  where
+    n is the number of tutorials given on the command line.
+     NAME : The name of the student to be assigned
+    SPACE : A whitespace, i.e., one of ` `, \t, \n, \0.
+      TUT : The name of a tutorial given on the command line.
+
+Students may cast up to n votes, in the order of descending preference.
+Repeating a tutorial is not allowed.  The number of students is limited by the
+total capacity.  If two students have the same name, you can't tell them apart
+anyways.  Why bother?
