@@ -9,8 +9,8 @@
 
 
 
-int students, tutors, **vote, **cost;
-char **name, **slot;
+int students, tutors, **vote = NULL, **cost = NULL, **offset = NULL;
+char **name = NULL, **slot = NULL;
 
 
 
@@ -78,24 +78,35 @@ void readVotes(void)
 
 
 
-void calcSimpleCost(void) {
-	/* calculate cost from vote */
+void calcOffsetCost(void) {
+	offset = malloc((size_t)students * sizeof(int*));
+	assert(offset);
 	cost = malloc((size_t)students * sizeof(int*));
 	assert(cost);
+
 	forStudent(s) {
+		offset[s] = malloc((size_t)tutors * sizeof(int));
+		assert(offset[s]);
 		cost[s] = malloc((size_t)tutors * sizeof(int));
 		assert(cost[s]);
-		int u = 0;
-		forTutor(v) {
-			if (vote[s][v] >= 0) u = v;
-			cost[s][vote[s][v]] = u;
+
+		int v = 0;
+		while (v < tutors && vote[s][v] >= 0) {
+			offset[s][vote[s][v]] = v;
+			v++;
 		}
+		while (v < tutors) {
+			offset[s][vote[s][v]] = v;
+			v++;
+		}
+
+		forTutor(t) cost[s][t] = offset[s][t];
 	}
 }
 
 
 
-int *maximum, *capacity, *head, *prev, *next;
+int *maximum = NULL, *capacity = NULL, *head = NULL, *prev = NULL, *next = NULL;
 
 
 
@@ -168,19 +179,19 @@ int show(void)
 	int cst = 0, mem = 0;
 	forTutor(t) {
 		int cst1 = 0, mem1 = 0;
-		printf("%s:", slot[t]);
+		fprintf(stderr, "%s:", slot[t]);
 		forMember(s,t) {
-			printf(" %s", name[s]);
+			fprintf(stderr, " %s", name[s]);
 			cst1 += cost[s][t];
 			mem1++;
 		}
-		printf("; cst=%d, memb=%d\n", cst1, mem1);
+		fprintf(stderr, "; cst=%d, memb=%d\n", cst1, mem1);
 		cst += cst1;
 		mem += mem1;
 		assert(mem1 + capacity[t] == maximum[t]);
 	}
-	printf("total cost = %d, members = %d\n", cst, mem);
-	printf("--------------------\n");
+	fprintf(stderr, "total cost = %d, members = %d\n", cst, mem);
+	fprintf(stderr, "--------------------\n");
 
 	return cst;
 }
@@ -229,8 +240,8 @@ void move(int const s, int const ta, int const tb)
 
 
 
-int *seen;
-int *delta;
+int *seen = NULL;
+int *delta = NULL;
 int cycle;
 
 
@@ -239,7 +250,7 @@ int push(int ta, int d) {
 
 	if (seen[ta]) {
 		if (d < delta[ta]) {
-			printf("cycle,%d: %s", d - delta[ta], slot[ta]);
+			fprintf(stderr, "cycle,%d: %s", d - delta[ta], slot[ta]);
 			cycle = ta;
 			return 1;
 		}
@@ -248,7 +259,7 @@ int push(int ta, int d) {
 
 	if (capacity[ta] > 0) {
 		if (d < 0) {
-			printf("path,%d: %s", d, slot[ta]);
+			fprintf(stderr, "path,%d: %s", d, slot[ta]);
 			cycle = -1;
 			return 1;
 		}
@@ -276,21 +287,21 @@ int push(int ta, int d) {
 		if (push(tb, d + wc)) {
 			if (cycle < 0) { /* we are on a path */
 				if (d < 0) { /* we are on the useful part */
-					printf(" «%s,%d« %s", name[w], wc, slot[ta]);
+					fprintf(stderr, " «%s,%d« %s", name[w], wc, slot[ta]);
 					move(w, ta, tb);
 					seen[ta] = 0;
 					return 1;
 				}
-				printf(" end\n");
+				fprintf(stderr, " end\n");
 				/* path up to here is useless */
 			} else { /* we are on a cycle */
-				printf(" «%s,%d« %s", name[w], wc, slot[ta]);
+				fprintf(stderr, " «%s,%d« %s", name[w], wc, slot[ta]);
 				move(w, ta, tb);
 				if (ta != cycle) { /* this is not the start */
 					seen[ta] = 0;
 					return 1;
 				}
-				printf(" close\n");
+				fprintf(stderr, " close\n");
 				/* just closed a cycle */
 				//break;
 			}
@@ -328,7 +339,7 @@ int assign(void)
 
 			if (wc < 0) {
 				if (push(tb, wc)) {
-					printf(" «%s,%d« %s top\n", name[w], wc, slot[ta]);
+					fprintf(stderr, " «%s,%d« %s top\n", name[w], wc, slot[ta]);
 					move(w, ta, tb);
 					//break;
 				}
@@ -362,20 +373,22 @@ void readCliArguments(char **argv)
 
 
 
-void evaluate(int n, int *val)
+void statistics(int **val)
 {
-	int max = 0, min=val[0];
+	int max = 0, min=val[0][0], sum = 0;
 	double avg = 0;
-	for (int i = 0; i < n; i++) {
-		avg += val[i];
-		if (val[i] > max) max = val[i];
-		if (val[i] < min) min = val[i];
+	forTutor(t) forMember(s,t) {
+		int v = val[s][t];
+		sum += v;
+		if (v > max) max = v;
+		if (v < min) min = v;
 	}
-	avg /= n;
+	avg = (double)sum / students;
 	double dev = 0;
-	for (int i = 0; i < n; i++) dev += pow(avg - val[i], 2);
-	dev = sqrt(dev / n);
-	printf("min=%d max=%d avg=%.3f dev=%.3f\n", min, max, avg, dev);
+	forTutor(t) forMember(s,t) dev += pow(avg - val[s][t], 2);
+	dev = sqrt(dev / students);
+	fprintf(stderr, "min=%d max=%d sum=%d avg=%.3f dev=%.3f\n",
+	        min, max, sum, avg, dev);
 }
 
 
@@ -388,7 +401,7 @@ int main(int argc, char **argv)
 	readCliArguments(argv);
 
 	readVotes();
-	calcSimpleCost();
+	calcOffsetCost();
 
 	initialAssignment();
 
@@ -408,16 +421,19 @@ int main(int argc, char **argv)
 
 
 
-	int *off = malloc((size_t)students * sizeof(int));
-	forTutor(t) forMember(s,t) off[s] = cost[s][t];
-	printf("Cost stats  : ");
-	evaluate(students, off);
+	statistics(offset);
+	statistics(cost);
 
-	calcSimpleCost();
-
-	forTutor(t) forMember(s,t) off[s] = cost[s][t];
-	printf("Offset stats: ");
-	evaluate(students, off);
+	forTutor(t) forMember(s,t) {
+		printf("%s\t%s\t#", name[s], slot[t]);
+		forTutor(n) {
+			int v = vote[s][n];
+			if (v == t) printf(" (%s)", slot[v]);
+			else if (v >= 0) printf(" %s", slot[v]);
+			else printf(" ~");
+		}
+		printf("\n");
+	}
 
 	return 0;
 }
