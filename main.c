@@ -13,7 +13,7 @@
 #define ansicol(x) ("\x1b[" x "m")
 
 
-int students, tutors, places, **vote = NULL, **cost = NULL, **offset = NULL;
+int students, tutors, places, **cost = NULL, **offset = NULL;
 char **name = NULL, **slot = NULL;
 char const *fnBlue = ansicol("0;34"),
 	*fnRed = ansicol("1;31"),
@@ -47,8 +47,8 @@ void readVotes(void)
 
 	name = malloc((size_t)alloc * sizeof(char*));
 	assert(name);
-	vote = malloc((size_t)alloc * sizeof(int*));
-	assert(vote);
+	offset = malloc((size_t)alloc * sizeof(int*));
+	assert(offset);
 
 	size_t size = 100;
 	char *buf = malloc(size);
@@ -66,17 +66,21 @@ void readVotes(void)
 
 			int seen[tutors];
 
-			vote[students] = malloc((size_t)tutors * sizeof(int));
-			assert(vote[students]);
+			offset[students] = malloc((size_t)tutors * sizeof(int));
+			assert(offset[students]);
 			forTutor(k) {
-				vote[students][k] = -1;
+				offset[students][k] = -1;
 				seen[k] = 0;
 			}
 
-			int j = 0;
+			int j = 0, black = 0;
 			char *tok;
 			while ((tok = strtok_r(NULL, " \t\n\0", &saveptr)) != NULL
 			       && j < tutors) {
+				if (strcmp("//", tok) == 0) {
+					black = 1;
+					continue;
+				}
 				int k = -1;
 				forTutor(t) if (strcmp(slot[t], tok) == 0) {
 					k = t;
@@ -86,14 +90,16 @@ void readVotes(void)
 					info("line %d: %s: Ignored invalid choice `%s`\n",
 					      lino, name[students], tok);
 				else {
-					vote[students][j++] = k;
+					offset[students][k] = black ? -2 : j;
+					j++;
 					seen[k] = 1;
 				}
 			}
 			if (tok) info("line %d: %s: Ignored excessive choice `%s`\n",
 			             lino, name[students], tok);
-			if (j < tutors) info("line %d: %s: Extending %d votes\n",
-			                      lino, name[students], tutors - j);
+			if (j < tutors)
+				info("line %d: %s: Extending %d votes\n",
+				     lino, name[students], tutors - j);
 			buf = malloc(size);
 
 			students++;
@@ -101,8 +107,8 @@ void readVotes(void)
 				alloc *= 2;
 				name = realloc(name, (size_t)alloc * sizeof(char*));
 				assert(name);
-				vote = realloc(vote, (size_t)alloc * sizeof(int*));
-				assert(vote);
+				offset = realloc(offset, (size_t)alloc * sizeof(int*));
+				assert(offset);
 			}
 		}
 	}
@@ -111,33 +117,21 @@ void readVotes(void)
 
 
 void calcOffsetCost(void) {
-	offset = malloc((size_t)students * sizeof(int*));
-	assert(offset);
 	cost = malloc((size_t)students * sizeof(int*));
 	assert(cost);
 
 	forStudent(s) {
-		offset[s] = malloc((size_t)tutors * sizeof(int));
-		assert(offset[s]);
 		cost[s] = malloc((size_t)tutors * sizeof(int));
 		assert(cost[s]);
 
-		forTutor(t) offset[s][t] = -1;
-		int set = 0;
-		forTutor(v) if (vote[s][v] > -1) {
-			offset[s][vote[s][v]] = v;
-			set++;
-		}
-		if (set < tutors)
-			forTutor(t)
-				if (offset[s][t] < 0)
-					offset[s][t] = set;
-
 		forTutor(t) {
 			int o = offset[s][t];
-			//cost[s][t] = o;
-			//cost[s][t] = o * o;
-			cost[s][t] = o * o * (tutors * students - s);
+			if (o > -1)
+				//cost[s][t] = o;
+				//cost[s][t] = o * o;
+				cost[s][t] = o * o * (tutors * students - s);
+			else
+				cost[s][t] = 0; //FIXME
 		}
 	}
 }
@@ -146,6 +140,31 @@ void calcOffsetCost(void) {
 
 int *maximum = NULL, *capacity = NULL,
 	*tutorial = NULL, *head = NULL, *prev = NULL, *next = NULL;
+
+
+
+int show(void)
+{
+	int cst = 0, mem = 0;
+	forTutor(t) {
+		int cst1 = 0, mem1 = 0;
+		info("%s:", slot[t]);
+		forMember(s,t) {
+			assert(tutorial[s] == t);
+			info(" %s", name[s]);
+			cst1 += cost[s][t];
+			mem1++;
+		}
+		info("; cst=%d, memb=%d\n", cst1, mem1);
+		cst += cst1;
+		mem += mem1;
+		assert(mem1 + capacity[t] == maximum[t]);
+	}
+	info("total cost = %d, members = %d\n", cst, mem);
+	info("--------------------\n");
+
+	return cst;
+}
 
 
 
@@ -197,12 +216,15 @@ void initialAssignment(void)
 	forStudent(s) {
 		int c = tutors, a = -1;
 		forTutor(t) {
-			if (vote[s][t] < c && capacity[t] > 0) {
+			if (0 <= cost[s][t] && cost[s][t] < c && capacity[t] > 0) {
 				a = t;
-				c = vote[s][t];
+				c = cost[s][t];
 			}
 		}
-		assert(a >= 0);
+		if (a < 0) {
+			show();
+			errx(1, "Failed to find initial assignment");
+		}
 
 		tutorial[s] = a;
 		capacity[a]--;
@@ -215,31 +237,6 @@ void initialAssignment(void)
 	integrity();
 }
 
-
-/*
-int show(void)
-{
-	int cst = 0, mem = 0;
-	forTutor(t) {
-		int cst1 = 0, mem1 = 0;
-		info("%s:", slot[t]);
-		forMember(s,t) {
-			assert(tutorial[s] == t);
-			info(" %s", name[s]);
-			cst1 += cost[s][t];
-			mem1++;
-		}
-		info("; cst=%d, memb=%d\n", cst1, mem1);
-		cst += cst1;
-		mem += mem1;
-		assert(mem1 + capacity[t] == maximum[t]);
-	}
-	info("total cost = %d, members = %d\n", cst, mem);
-	info("--------------------\n");
-
-	return cst;
-}
-*/
 
 
 /* This actually performs the relocation of a student, and updates all the
@@ -325,6 +322,7 @@ int push(int ta, int d) {
 
 		int w = -1, wc = 0, sc = 0;
 		forMember(s,ta) {
+			if (cost[s][tb] < 0) continue; // blacklisted
 			sc = cost[s][tb] - cost[s][ta];
 			if (w < 0 || sc < wc) {
 				w = s;
@@ -378,6 +376,7 @@ int assign(void)
 
 			int w = -1, wc = 0, sc = 0;
 			forMember(s,ta) {
+				if (cost[s][tb] < 0) continue; // blacklisted
 				sc = cost[s][tb] - cost[s][ta];
 				if (w < 0 || sc < wc) {
 					w = s;
@@ -502,8 +501,11 @@ int main(int argc, char **argv)
 	forStudent(s) {
 		int t = tutorial[s];
 		printf("%s\t%s\t#%d %d\t", name[s], slot[t], s, cost[s][t]);
+		int vote[tutors];
+		forTutor(n) vote[n] = -1;
+		forTutor(n) if (offset[s][n] > -1) vote[offset[s][n]] = n;
 		forTutor(n) {
-			int v = vote[s][n];
+			int v = vote[n];
 			if (v > -1) printf(" %s:%d", slot[v], cost[s][v]);
 		}
 		printf("\n");
