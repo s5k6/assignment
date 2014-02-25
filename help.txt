@@ -1,33 +1,47 @@
-      _            _
-     / \   ___ ___(_)                           Assi - pushing around students
-    / _ \ / __/ __| |                    (assistence in antisocial assignment)
-   / ___ \\__ \__ \ |
-  /_/   \_\___/___/_|
+                    _
+   ____ ___________(_)___ _____
+  / __ `/ ___/ ___/ / __ `/ __ \
+ / /_/ (__  |__  ) / /_/ / / / /  pushing around students
+ \__,_/____/____/_/\__, /_/ /_/
+                  /____/
 
 Synopsis:
 
-    assi TUT=CAP ( TUT(=CAP)? )*  <  VOTES > RESULT
+    assi TUT=CAP ( TUT(=CAP)? )*  <VOTES >RESULT
 
   where
-       TUT : The name of a tutorial, use only ascii letters and digits.
-       CAP : The integral capacity of the tutorial.  If omitted, reuse the
-               capacity of the previous tutorial.
+       TUT : The name of a tutorial, use only ascii letters and
+               digits.
+       CAP : The integral capacity of the tutorial.  If omitted, reuse
+               the capacity of the previous tutorial.
      VOTES : The file containing the student's preferences.
-    RESULT : The file containing the resulting assignment.
+    RESULT : The file to store the result
 
-The file VOTES contains the votes cast by the students.  Comments are of the
-#-eol style.  Empty lines are ignored.  Other lines must have the following
-form:
+The file VOTES contains the votes cast by the students.  Comments are
+of the #-eol style.  Empty lines are ignored.  Other lines represent a
+student's vote, and must have the following form:
 
-    NAME ( SPACE TUT ){0,n}
+    NAME TUT*
 
   where
-    n is the number of tutorials given on the command line.
+
      NAME : The name of the student to be assigned
-    SPACE : A whitespace, i.e., one of ` `, \t, \n, \0.
       TUT : The name of a tutorial given on the command line.
 
-Students may cast up to n votes, in the order of descending preference.
-Repeating a tutorial is not allowed.  The number of students is limited by the
-total capacity.  If two students have the same name, you can't tell them apart
-anyways.  Why bother?
+The chosen tutorials given in a vote represent the preference in
+descending order.  Fewer choices than existing tutorials raise a
+warning, and the vote is extended uniformly using the next free cost
+value.  Excessive, repeated, or non-tutorial choices raise a warning,
+and are ignored.
+
+Comments at the top/bottom of the RESULT file describe the
+initial/remaining capacities for each tutorial in a CLI-friendly
+format.  The remaining lines are formatted as follows:
+
+    NAME TUT #N COST (TUT:COST)*
+
+Where the NAME of the student and the assigned tutorial TUT form the
+result.  In the following #-eol style comment, N is the position of
+the student in the input file, next is the COST of the found
+assignment, followed by the student's original vote together with the
+respective cost of each choice.

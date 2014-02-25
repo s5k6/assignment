@@ -7,6 +7,7 @@
 #include <string.h>
 #include <math.h>
 #include <unistd.h>
+#include <stdarg.h>
 
 
 #define ansicol(x) ("\x1b[" x "m")
@@ -23,6 +24,20 @@ char const *fnBlue = ansicol("0;34"),
 #define forTutor(t) for (int t = 0; t < tutors; t++)
 #define forStudent(s) for (int s = 0; s < students; s++)
 #define forMember(s,t) for (int s = head[t]; s >= 0; s = next[s])
+
+
+
+/* a variadic function to print messages */
+
+void vout(FILE * stream, const char * fmt, va_list ap) {
+  vfprintf(stream, fmt, ap);
+}
+
+void info(const char * fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt); vout(stderr, fmt, ap); va_end(ap);
+}
+
 
 
 void readVotes(void)
@@ -46,33 +61,41 @@ void readVotes(void)
 		name[students] = strtok_r(buf, " \t\n\0", &saveptr);
 		if (name[students]) {
 			if (students >= places)
-				errx(1, "Too many students for %d places", places);
-			int seen[tutors], j = 0;
-			char *v;
+				errx(1, "line %d: Too many students for %d places",
+				     lino, places);
+
+			int seen[tutors];
+
 			vote[students] = malloc((size_t)tutors * sizeof(int));
 			assert(vote[students]);
-
 			forTutor(k) {
-				seen[k] = 0;
 				vote[students][k] = -1;
+				seen[k] = 0;
 			}
 
-			while ((v = strtok_r(NULL, " \t\n\0", &saveptr)) != NULL) {
-				if (j == tutors)
-					errx(1, "line %d: excessive choice `%s`", lino, v);
-				forTutor(k) {
-					if (strcmp(slot[k], v) == 0) {
-						if (seen[k]) errx(1, "line %d: repeated `%s`", lino, v);
-						vote[students][j] = k;
-						seen[k] = 1;
-						break;
-					}
+			int j = 0;
+			char *tok;
+			while ((tok = strtok_r(NULL, " \t\n\0", &saveptr)) != NULL
+			       && j < tutors) {
+				int k = -1;
+				forTutor(t) if (strcmp(slot[t], tok) == 0) {
+					k = t;
+					break;
 				}
-				if (vote[students][j] < 0)
-					errx(1, "line %d: invalid choice `%s`", lino, v);
-				j++;
+				if (k < 0 || seen[k])
+					info("line %d: %s: Ignored invalid choice `%s`\n",
+					      lino, name[students], tok);
+				else {
+					vote[students][j++] = k;
+					seen[k] = 1;
+				}
 			}
+			if (tok) info("line %d: %s: Ignored excessive choice `%s`\n",
+			             lino, name[students], tok);
+			if (j < tutors) info("line %d: %s: Extending %d votes\n",
+			                      lino, name[students], tutors - j);
 			buf = malloc(size);
+
 			students++;
 			if (students == alloc) {
 				alloc *= 2;
@@ -99,16 +122,16 @@ void calcOffsetCost(void) {
 		cost[s] = malloc((size_t)tutors * sizeof(int));
 		assert(cost[s]);
 
-		int v = 0;
-		while (v < tutors && vote[s][v] >= 0) {
+		forTutor(t) offset[s][t] = -1;
+		int set = 0;
+		forTutor(v) if (vote[s][v] > -1) {
 			offset[s][vote[s][v]] = v;
-			v++;
+			set++;
 		}
-		int last = v;
-		while (v < tutors) {
-			offset[s][v] = last;
-			v++;
-		}
+		if (set < tutors)
+			forTutor(t)
+				if (offset[s][t] < 0)
+					offset[s][t] = set;
 
 		forTutor(t) {
 			int o = offset[s][t];
@@ -193,30 +216,30 @@ void initialAssignment(void)
 }
 
 
-
+/*
 int show(void)
 {
 	int cst = 0, mem = 0;
 	forTutor(t) {
 		int cst1 = 0, mem1 = 0;
-		fprintf(stderr, "%s:", slot[t]);
+		info("%s:", slot[t]);
 		forMember(s,t) {
 			assert(tutorial[s] == t);
-			fprintf(stderr, " %s", name[s]);
+			info(" %s", name[s]);
 			cst1 += cost[s][t];
 			mem1++;
 		}
-		fprintf(stderr, "; cst=%d, memb=%d\n", cst1, mem1);
+		info("; cst=%d, memb=%d\n", cst1, mem1);
 		cst += cst1;
 		mem += mem1;
 		assert(mem1 + capacity[t] == maximum[t]);
 	}
-	fprintf(stderr, "total cost = %d, members = %d\n", cst, mem);
-	fprintf(stderr, "--------------------\n");
+	info("total cost = %d, members = %d\n", cst, mem);
+	info("--------------------\n");
 
 	return cst;
 }
-
+*/
 
 
 /* This actually performs the relocation of a student, and updates all the
@@ -275,7 +298,7 @@ int push(int ta, int d) {
 	if (seen[ta]) {
 		if (d < delta[ta]) {
 			gain = d - delta[ta];
-			fprintf(stderr, "cycle %d: %s", gain, slot[ta]);
+			info("cycle %d: %s", gain, slot[ta]);
 			cycle = ta;
 			return 1;
 		}
@@ -285,7 +308,7 @@ int push(int ta, int d) {
 	if (capacity[ta] > 0) {
 		if (d < 0) {
 			gain = d;
-			fprintf(stderr, "path %d: %s", gain, slot[ta]);
+			info("path %d: %s", gain, slot[ta]);
 			cycle = -1;
 			return 1;
 		}
@@ -313,21 +336,21 @@ int push(int ta, int d) {
 		if (push(tb, d + wc)) {
 			if (cycle < 0) { /* we are on a path */
 				if (d < 0) { /* we are on the useful part */
-					fprintf(stderr, " «%s:%d« %s", name[w], wc, slot[ta]);
+					info(" «%s:%d« %s", name[w], wc, slot[ta]);
 					move(w, tb);
 					seen[ta] = 0;
 					return 1;
 				}
-				fprintf(stderr, " end\n");
+				info(" end\n");
 				/* path up to here is useless */
 			} else { /* we are on a cycle */
-				fprintf(stderr, " «%s:%d« %s", name[w], wc, slot[ta]);
+				info(" «%s:%d« %s", name[w], wc, slot[ta]);
 				move(w, tb);
 				if (ta != cycle) { /* this is not the start */
 					seen[ta] = 0;
 					return 1;
 				}
-				fprintf(stderr, " close\n");
+				info(" close\n");
 				/* just closed a cycle */
 				//break;
 			}
@@ -366,7 +389,7 @@ int assign(void)
 
 			if (wc < 0) {
 				if (push(tb, wc)) {
-					fprintf(stderr, " «%s:%d« %s top\n", name[w], wc, slot[ta]);
+					info(" «%s:%d« %s top\n", name[w], wc, slot[ta]);
 					move(w, tb);
 					//break;
 				}
@@ -433,11 +456,11 @@ void statistics(void)
 	costDev = sqrt(costDev / students);
 	offDev = sqrt(offDev / students);
 
-	fprintf(stderr, "%sOffset:  hist = %s[%d", fnBlue, fnRed, offCount[0]);
-	for (int i = 1; i < tutors; i++) fprintf(stderr, ",%d", offCount[i]);
-	fprintf(stderr, "]%s,  Σ = %s%d%s,  ⌀ = %.3f,  σ = %.3f\n", fnBlue, fnRed,
+	info("%sOffset:  hist = %s[%d", fnBlue, fnRed, offCount[0]);
+	for (int i = 1; i < tutors; i++) info(",%d", offCount[i]);
+	info("]%s,  Σ = %s%d%s,  ⌀ = %.3f,  σ = %.3f\n", fnBlue, fnRed,
 	        offSum, fnBlue, offAvg, offDev);
-	fprintf(stderr, "Cost:  range = %d..%d,  Σ = %d,  ⌀ = %.3f,  σ = %.3f%s\n",
+	info("Cost:  range = %d..%d,  Σ = %d,  ⌀ = %.3f,  σ = %.3f%s\n",
 	        costMin, costMax, costSum, costAvg, costDev, fnNorm);
 }
 
@@ -446,9 +469,9 @@ void statistics(void)
 int main(int argc, char **argv)
 {
 	if (argc < 2) {
-      printf("\n%s\n",
+		printf("%s\n",
 #include "help.inc"
-             );
+		       );
 		return 0;
 	}
 
@@ -457,12 +480,12 @@ int main(int argc, char **argv)
 	tutors = argc - 1;
 
 	readCliArguments(argv);
-
 	readVotes();
+
+	if (students < 1) errx(1, "No students to assign");
+
 	calcOffsetCost();
-
 	initialAssignment();
-
 	statistics();
 
 	seen = malloc((size_t)tutors * sizeof(int));
@@ -475,20 +498,17 @@ int main(int argc, char **argv)
 
 	printf("# Initial capacities:");
 	forTutor(t) printf(" %s=%d", slot[t], maximum[t]);
-	printf("\n# Format: WHO\tWHERE\t# ORDER (@? VOTE:COST)*\n#\n");
+	printf("\n# WHO\tWHERE\t#N COST\t (VOTE:COST)*\n");
 	forStudent(s) {
 		int t = tutorial[s];
-		printf("%s\t%s\t# %d", name[s], slot[t], s);
+		printf("%s\t%s\t#%d %d\t", name[s], slot[t], s, cost[s][t]);
 		forTutor(n) {
 			int v = vote[s][n];
-			printf
-				(v == t ? " @%s:%d" : " %s:%d",
-				 v < 0 ? "~" : slot[v], cost[s][v]);
+			if (v > -1) printf(" %s:%d", slot[v], cost[s][v]);
 		}
 		printf("\n");
 	}
-	// maybe add more info to gen. file
-	printf("#\n# Remaining capacities:");
+	printf("# Remaining capacities:");
 	forTutor(t) printf(" %s=%d", slot[t], capacity[t]);
 	printf("\n");
 
