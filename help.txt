@@ -21,27 +21,32 @@ The file VOTES contains the votes cast by the students.  Comments are
 of the #-eol style.  Empty lines are ignored.  Other lines represent a
 student's vote, and must have the following form:
 
-    NAME TUT*
+    NAME TUT* (! TUT*)?
 
   where
 
      NAME : The name of the student to be assigned
       TUT : The name of a tutorial given on the command line.
 
-The chosen tutorials given in a vote represent the preference in
-descending order.  Fewer choices than existing tutorials raise a
-warning, and the vote is extended uniformly using the next free cost
-value.  Excessive, repeated, or non-tutorial choices raise a warning,
-and are ignored.
+The tutorials given in a vote before the optional exclamation mark
+represent the preference in descending order.  Fewer choices than
+existing tutorials raise a warning, and the vote is extended uniformly
+using the next free cost value.  Excessive, repeated, or non-tutorial
+choices raise a warning, and are ignored.
+
+Tutorials following an optional exclamation mark are blacklisted for
+that student.  NOTE: The current implementation may fail finding an
+initial assignment due to blacklisting, although a valid assignment
+exists.  This is a bug.
 
 Comments at the top/bottom of the RESULT file describe the
 initial/remaining capacities for each tutorial in a CLI-friendly
 format.  The remaining lines are formatted as follows:
 
-    NAME TUT #N COST (TUT:COST)*
+    NAME TUT #N COST (TUT:COST)* (! TUT*)?
 
 Where the NAME of the student and the assigned tutorial TUT form the
 result.  In the following #-eol style comment, N is the position of
 the student in the input file, next is the COST of the found
 assignment, followed by the student's original vote together with the
-respective cost of each choice.
+respective cost of each choice, ant potential blacklisting after a `!`.

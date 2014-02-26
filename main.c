@@ -64,20 +64,18 @@ void readVotes(void)
 				errx(1, "line %d: Too many students for %d places",
 				     lino, places);
 
-			int seen[tutors];
-
-			offset[students] = malloc((size_t)tutors * sizeof(int));
-			assert(offset[students]);
-			forTutor(k) {
-				offset[students][k] = -1;
-				seen[k] = 0;
-			}
+			int *vote = malloc((size_t)tutors * sizeof(int));
+			assert(vote);
+			offset[students] = vote;
+			forTutor(k) vote[k] = -1;
 
 			int j = 0, black = 0;
 			char *tok;
 			while ((tok = strtok_r(NULL, " \t\n\0", &saveptr)) != NULL
 			       && j < tutors) {
-				if (strcmp("//", tok) == 0) {
+				if (tok[0] == '!') {
+					if (tok[1]) errx(1, "line %d: Leading exclamation", lino);
+					if (black) errx(1, "line %d: Repeated exclamation", lino);
 					black = 1;
 					continue;
 				}
@@ -86,13 +84,12 @@ void readVotes(void)
 					k = t;
 					break;
 				}
-				if (k < 0 || seen[k])
+				if (k < 0 || vote[k] != -1)
 					info("line %d: %s: Ignored invalid choice `%s`\n",
 					      lino, name[students], tok);
 				else {
-					offset[students][k] = black ? -2 : j;
+					vote[k] = black ? -2 : j;
 					j++;
-					seen[k] = 1;
 				}
 			}
 			if (tok) info("line %d: %s: Ignored excessive choice `%s`\n",
@@ -100,7 +97,6 @@ void readVotes(void)
 			if (j < tutors)
 				info("line %d: %s: Extending %d votes\n",
 				     lino, name[students], tutors - j);
-			buf = malloc(size);
 
 			students++;
 			if (students == alloc) {
@@ -110,8 +106,11 @@ void readVotes(void)
 				offset = realloc(offset, (size_t)alloc * sizeof(int*));
 				assert(offset);
 			}
+
+			buf = malloc(size);
 		}
 	}
+	free(buf);
 }
 
 
@@ -124,14 +123,20 @@ void calcOffsetCost(void) {
 		cost[s] = malloc((size_t)tutors * sizeof(int));
 		assert(cost[s]);
 
+		int off = -1;
 		forTutor(t) {
-			int o = offset[s][t];
-			if (o > -1)
-				//cost[s][t] = o;
-				//cost[s][t] = o * o;
-				cost[s][t] = o * o * (tutors * students - s);
-			else
-				cost[s][t] = 0; //FIXME
+			if (offset[s][t] == -1) {
+				off++;
+				cost[s][t] = off * off * (tutors * students - s);
+			} else if (offset[s][t] == -2) {
+				cost[s][t] = -1;
+			} else if (offset[s][t] >= 0) {
+				off = offset[s][t];
+				//cost[s][t] = off;
+				//cost[s][t] = off * off;
+				cost[s][t] = off * off * (tutors * students - s);
+			} else
+				assert(0);
 		}
 	}
 }
@@ -142,7 +147,7 @@ int *maximum = NULL, *capacity = NULL,
 	*tutorial = NULL, *head = NULL, *prev = NULL, *next = NULL;
 
 
-
+#ifdef DEBUG
 int show(void)
 {
 	int cst = 0, mem = 0;
@@ -165,7 +170,7 @@ int show(void)
 
 	return cst;
 }
-
+#endif
 
 
 void integrity(void)
@@ -197,6 +202,11 @@ void integrity(void)
 
 void initialAssignment(void)
 {
+	/* FIXME: A robust way to find an initial assignment with
+	   potential blacklisting would require to construct a maximum
+	   cardinality matching.
+	 */
+
 	head = malloc((size_t)tutors * sizeof(int));
 	assert(head);
 	capacity = malloc((size_t)tutors * sizeof(int));
@@ -214,17 +224,14 @@ void initialAssignment(void)
 	}
 
 	forStudent(s) {
-		int c = tutors, a = -1;
+		int c = 0, a = -1;
 		forTutor(t) {
-			if (0 <= cost[s][t] && cost[s][t] < c && capacity[t] > 0) {
+			if (0 <= cost[s][t] && (a < 0 || cost[s][t] < c) && capacity[t] > 0) {
 				a = t;
 				c = cost[s][t];
 			}
 		}
-		if (a < 0) {
-			show();
-			errx(1, "Failed to find initial assignment");
-		}
+		if (a < 0) errx(1, "No initial assignment for `%s`", name[s]);
 
 		tutorial[s] = a;
 		capacity[a]--;
@@ -501,12 +508,19 @@ int main(int argc, char **argv)
 	forStudent(s) {
 		int t = tutorial[s];
 		printf("%s\t%s\t#%d %d\t", name[s], slot[t], s, cost[s][t]);
-		int vote[tutors];
+		int vote[tutors], black[tutors], bc = 0;
 		forTutor(n) vote[n] = -1;
-		forTutor(n) if (offset[s][n] > -1) vote[offset[s][n]] = n;
+		forTutor(n) {
+			if (offset[s][n] > -1) vote[offset[s][n]] = n;
+			else if (offset[s][n] == -2) black[bc++] = n;
+		}
 		forTutor(n) {
 			int v = vote[n];
 			if (v > -1) printf(" %s:%d", slot[v], cost[s][v]);
+		}
+		if (bc) {
+			printf("\t!");
+			for (int i = 0; i < bc; i++) printf(" %s", slot[black[i]]);
 		}
 		printf("\n");
 	}
