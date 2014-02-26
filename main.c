@@ -71,8 +71,7 @@ void readVotes(void)
 
 			int j = 0, black = 0;
 			char *tok;
-			while ((tok = strtok_r(NULL, " \t\n\0", &saveptr)) != NULL
-			       && j < tutors) {
+			while ((tok = strtok_r(NULL, " \t\n\0", &saveptr)) && j < tutors) {
 				if (tok[0] == '!') {
 					if (tok[1]) errx(1, "line %d: Leading exclamation", lino);
 					if (black) errx(1, "line %d: Repeated exclamation", lino);
@@ -409,14 +408,53 @@ int assign(void)
 
 
 
-void readCliArguments(char **argv)
+void readCliArguments(char *spec)
 {
-	slot = malloc((size_t)tutors * sizeof(char *));
+	int alloc = 5;
+	tutors = 0;
+
+	slot = malloc((size_t)alloc * sizeof(char *));
 	assert(slot);
-	maximum = malloc((size_t)tutors * sizeof(int));
+	maximum = malloc((size_t)alloc * sizeof(int));
 	assert(maximum);
 	places = 0;
 
+	char *buf = strdup(spec);
+	assert(buf);
+	char *start, *saveptr;
+
+	while ((start = strtok_r(tutors ? NULL : buf, ",", &saveptr))) {
+		if (tutors >= alloc) {
+			alloc *= 2;
+			slot = realloc(slot, (size_t)alloc * sizeof(char *));
+			assert(slot);
+			maximum = realloc(maximum, (size_t)alloc * sizeof(int));
+			assert(maximum);
+		}
+		slot[tutors] = start;
+		char *col = strchr(start, '=');
+		if (!col) {
+			if (tutors > 0) maximum[tutors] = maximum[tutors-1];
+			else errx(1, "Missing `=` in argument %s", start);
+		} else {
+			char *endptr;
+			maximum[tutors] = (int)strtol(col+1, &endptr, 10);
+			if (*endptr) errx(1, "Cannot parse integer");
+			*col = '\0';
+		}
+		places += maximum[tutors];
+		tutors++;
+	}
+
+	if (!tutors) errx(1, "No tutorials specified");
+
+	slot = realloc(slot, (size_t)tutors * sizeof(char *));
+	assert(slot);
+	maximum = realloc(maximum, (size_t)tutors * sizeof(int));
+	assert(maximum);
+
+
+/*
 	forTutor(t) {
 		slot[t] = argv[t+1];
 		char *col = strchr(slot[t], '=');
@@ -431,6 +469,7 @@ void readCliArguments(char **argv)
 		}
 		places += maximum[t];
 	}
+*/
 }
 
 
@@ -474,7 +513,7 @@ void statistics(void)
 
 int main(int argc, char **argv)
 {
-	if (argc < 2) {
+	if (argc != 2) {
 		printf("%s\n",
 #include "help.inc"
 		       );
@@ -483,9 +522,8 @@ int main(int argc, char **argv)
 
 	if (!isatty(fileno(stderr))) fnBlue = fnRed = fnNorm = "";
 
-	tutors = argc - 1;
-
-	readCliArguments(argv);
+	tutors = 0;
+	readCliArguments(argv[1]);
 	readVotes();
 
 	if (students < 1) errx(1, "No students to assign");
@@ -503,10 +541,11 @@ int main(int argc, char **argv)
 	statistics();
 
 	printf("# Initial capacities:");
-	forTutor(t) printf(" %s=%d", slot[t], maximum[t]);
+	forTutor(t) printf("%s%s=%d", t ? "," : "", slot[t], maximum[t]);
 	printf("\n# WHO\tWHERE\t#N COST\t (VOTE:COST)*\n");
 	forStudent(s) {
 		int t = tutorial[s];
+		assert(offset[s][t] != -2);
 		printf("%s\t%s\t#%d %d\t", name[s], slot[t], s, cost[s][t]);
 		int vote[tutors], black[tutors], bc = 0;
 		forTutor(n) vote[n] = -1;
@@ -524,8 +563,8 @@ int main(int argc, char **argv)
 		}
 		printf("\n");
 	}
-	printf("# Remaining capacities:");
-	forTutor(t) printf(" %s=%d", slot[t], capacity[t]);
+	printf("# Remaining capacities: ");
+	forTutor(t) printf("%s%s=%d", t ? "," : "", slot[t], capacity[t]);
 	printf("\n");
 
 	return 0;

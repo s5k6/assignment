@@ -1,13 +1,13 @@
                     _
    ____ ___________(_)___ _____
-  / __ `/ ___/ ___/ / __ `/ __ \
- / /_/ (__  |__  ) / /_/ / / / /  pushing around students
- \__,_/____/____/_/\__, /_/ /_/
+  / __ `/ ___/ ___/ / __ `/ __ \     pushing
+ / /_/ (__  |__  ) / /_/ / / / /    around
+ \__,_/____/____/_/\__, /_/ /_/    students
                   /____/
 
 Synopsis:
 
-    assi TUT=CAP ( TUT(=CAP)? )*  <VOTES >RESULT
+    assi TUT=CAP(,TUT(=CAP)?)*  <VOTES >RESULT
 
   where
        TUT : The name of a tutorial, use only ascii letters and
@@ -49,4 +49,4 @@ Where the NAME of the student and the assigned tutorial TUT form the
 result.  In the following #-eol style comment, N is the position of
 the student in the input file, next is the COST of the found
 assignment, followed by the student's original vote together with the
-respective cost of each choice, ant potential blacklisting after a `!`.
+respective cost of each choice, and potential blacklisting after a `!`.

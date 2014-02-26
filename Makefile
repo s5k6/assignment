@@ -9,7 +9,7 @@ clean :
 	rm -f assi *.o *.inc *.dat *.log
 
 run : assi
-	./mkdata biased | shuf | tee in.log | ./assi a=20 b c d e >| out.log
+	./mkdata biased | shuf | tee in.log | ./assi a=20,b,c,d,e >| out.log
 
 assi : main.o
 	gcc -o $@ $^ -lm
