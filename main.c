@@ -29,13 +29,9 @@ char const *fnBlue = ansicol("0;34"),
 
 /* a variadic function to print messages */
 
-void vout(FILE * stream, const char * fmt, va_list ap) {
-  vfprintf(stream, fmt, ap);
-}
-
 void info(const char * fmt, ...) {
   va_list ap;
-  va_start(ap, fmt); vout(stderr, fmt, ap); va_end(ap);
+  va_start(ap, fmt); vfprintf(stderr, fmt, ap); va_end(ap);
 }
 
 
@@ -114,6 +110,14 @@ void readVotes(void)
 
 
 
+int costFun(int s, int o)
+{
+	(void)s;
+	return o * o; // (o * o + 1) * students - s;
+}
+
+
+
 void calcOffsetCost(void) {
 	cost = malloc((size_t)students * sizeof(int*));
 	assert(cost);
@@ -122,21 +126,19 @@ void calcOffsetCost(void) {
 		cost[s] = malloc((size_t)tutors * sizeof(int));
 		assert(cost[s]);
 
-		int off = -1;
+		int cnt = 0;
 		forTutor(t) {
-			if (offset[s][t] == -1) {
-				off++;
-				cost[s][t] = off * off * (tutors * students - s);
-			} else if (offset[s][t] == -2) {
+			if (offset[s][t] == -2) { // blacklisted
 				cost[s][t] = -1;
 			} else if (offset[s][t] >= 0) {
-				off = offset[s][t];
-				//cost[s][t] = off;
-				//cost[s][t] = off * off;
-				cost[s][t] = off * off * (tutors * students - s);
+				cost[s][t] = costFun(s, offset[s][t]);
+				cnt++;
 			} else
-				assert(0);
+				assert(offset[s][t] == -1);
 		}
+		forTutor(t)
+			if (offset[s][t] == -1)
+				cost[s][t] = costFun(s, cnt);
 	}
 }
 
@@ -199,52 +201,6 @@ void integrity(void)
 
 
 
-void initialAssignment(void)
-{
-	/* FIXME: A robust way to find an initial assignment with
-	   potential blacklisting would require to construct a maximum
-	   cardinality matching.
-	 */
-
-	head = malloc((size_t)tutors * sizeof(int));
-	assert(head);
-	capacity = malloc((size_t)tutors * sizeof(int));
-	assert(capacity);
-	prev = malloc((size_t)students * sizeof(int));
-	assert(prev);
-	next = malloc((size_t)students * sizeof(int));
-	assert(next);
-	tutorial = malloc((size_t)students * sizeof(int));
-	assert(tutorial);
-
-	forTutor(t) {
-		head[t] = -1;
-		capacity[t] = maximum[t];
-	}
-
-	forStudent(s) {
-		int c = 0, a = -1;
-		forTutor(t) {
-			if (0 <= cost[s][t] && (a < 0 || cost[s][t] < c) && capacity[t] > 0) {
-				a = t;
-				c = cost[s][t];
-			}
-		}
-		if (a < 0) errx(1, "No initial assignment for `%s`", name[s]);
-
-		tutorial[s] = a;
-		capacity[a]--;
-		prev[s] = -1;
-		next[s] = head[a];
-		if (head[a] >= 0)
-			prev[head[a]] = s;
-		head[a] = s;
-	}
-	integrity();
-}
-
-
-
 /* This actually performs the relocation of a student, and updates all the
    data structures.  */
 
@@ -284,6 +240,77 @@ void move(int const s, int const tb)
 
 	capacity[ta]++;
 	capacity[tb]--;
+}
+
+
+
+void initialAssignment(void)
+{
+	head = malloc((size_t)tutors * sizeof(int));
+	assert(head);
+	capacity = malloc((size_t)tutors * sizeof(int));
+	assert(capacity);
+	prev = malloc((size_t)students * sizeof(int));
+	assert(prev);
+	next = malloc((size_t)students * sizeof(int));
+	assert(next);
+	tutorial = malloc((size_t)students * sizeof(int));
+	assert(tutorial);
+
+	forTutor(t) {
+		head[t] = -1;
+		capacity[t] = maximum[t];
+	}
+
+	forStudent(s) {
+		int a = -1;
+		int black[tutors], bc = 0;
+
+		// Find the cheapest free tutorial to assign the student to
+		forTutor(t) {
+			if (capacity[t] < 1) continue;
+			if (cost[s][t] < 0)	black[bc++] = t;
+			else if (a < 0 || cost[s][t] < cost[s][a]) a = t;
+		}
+
+		// None found?
+		if (a < 0) {
+			/* Probably due to blacklisting, since there should be
+			   enough places since parsing the votes. */
+			assert(bc);
+			// relocate other student into blacklisted tutorial of current
+			int who = -1, where = -1;
+			for (int i = 0; i < bc; i++) {
+				forTutor(ta) {
+					if (cost[s][ta] < 0) continue;
+					assert(capacity[ta] == 0); // why not put s there?
+					forMember(o,ta) {
+						if (cost[o][black[i]] < 0) continue;
+						if (who < 0 || cost[o][black[i]] < cost[who][where]) {
+							who = o;
+							where = black[i];
+						}
+					}
+				}
+			}
+			// make place for the student
+			if (who > -1) {
+				a = tutorial[who];
+				move(who, where);
+			}
+		}
+		if (a < 0) errx(1, "No initial assignment for `%s`", name[s]);
+
+		tutorial[s] = a;
+		capacity[a]--;
+		prev[s] = -1;
+		next[s] = head[a];
+		if (head[a] >= 0)
+			prev[head[a]] = s;
+		head[a] = s;
+	}
+
+	forStudent(s) assert(offset[s][tutorial[s]] != -2);
 
 	integrity();
 }
@@ -356,7 +383,6 @@ int push(int ta, int d) {
 				}
 				info(" close\n");
 				/* just closed a cycle */
-				//break;
 			}
 		}
 
@@ -396,7 +422,6 @@ int assign(void)
 				if (push(tb, wc)) {
 					info(" «%s:%d« %s top\n", name[w], wc, slot[ta]);
 					move(w, tb);
-					//break;
 				}
 			}
 		}
@@ -536,11 +561,14 @@ int main(int argc, char **argv)
 	assert(seen);
 	delta = malloc((size_t)tutors * sizeof(int));
 	assert(delta);
-	do assign(); while (gain < 0);
+	do {
+		assign();
+		//integrity();
+	} while (gain < 0);
 
 	statistics();
 
-	printf("# Initial capacities:");
+	printf("# Initial capacities: ");
 	forTutor(t) printf("%s%s=%d", t ? "," : "", slot[t], maximum[t]);
 	printf("\n# WHO\tWHERE\t#N COST\t (VOTE:COST)*\n");
 	forStudent(s) {

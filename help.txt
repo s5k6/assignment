@@ -1,9 +1,9 @@
-                    _
-   ____ ___________(_)___ _____
-  / __ `/ ___/ ___/ / __ `/ __ \     pushing
- / /_/ (__  |__  ) / /_/ / / / /    around
- \__,_/____/____/_/\__, /_/ /_/    students
-                  /____/
+                   _                                  __
+  ____ ___________(_)___ _____  ____ ___  ___  ____  / /_
+ / __ `/ ___/ ___/ / __ `/ __ \/ __ `__ \/ _ \/ __ \/ __/
+/ /_/ (__  |__  ) / /_/ / / / / / / / / /  __/ / / / /_
+\__,_/____/____/_/\__, /_/ /_/_/ /_/ /_/\___/_/ /_/\__/
+                 /____/
 
 Synopsis:
 
@@ -35,9 +35,8 @@ using the next free cost value.  Excessive, repeated, or non-tutorial
 choices raise a warning, and are ignored.
 
 Tutorials following an optional exclamation mark are blacklisted for
-that student.  NOTE: The current implementation may fail finding an
-initial assignment due to blacklisting, although a valid assignment
-exists.  This is a bug.
+that student, so that the repective student is never moved to that
+tutorial.
 
 Comments at the top/bottom of the RESULT file describe the
 initial/remaining capacities for each tutorial in a CLI-friendly
