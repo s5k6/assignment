@@ -446,7 +446,7 @@ void readCliArguments(char *spec)
 
 	char *buf = strdup(spec);
 	assert(buf);
-	char *start, *saveptr;
+	char *start, *saveptr = NULL;
 
 	while ((start = strtok_r(tutors ? NULL : buf, ",", &saveptr))) {
 		if (tutors >= alloc) {
