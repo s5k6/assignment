@@ -19,6 +19,16 @@ char const *fnBlue = ansicol("0;34"),
 	*fnRed = ansicol("1;31"),
 	*fnNorm = ansicol("0");
 
+/* `name[s]` is the name of student `s`.
+
+   `offset[s][t] says how far off it would be to assign student `s` to
+   tutorial `t`.  This is `-2` if the slot was blacklisted, and `-1`
+   if the student did not tell, and non-negative otherwise.
+
+
+   `cost[s][t]` is the cost of putting student `s` into tutorial `t`.
+*/
+
 
 
 #define forTutor(t) for (int t = 0; t < tutors; t++)
@@ -110,6 +120,12 @@ void readVotes(void)
 
 
 
+/* Given a student `s`, and his offset `o`, return the cost he causes.
+   The student is present only to maybe give higher priority to those
+   with a smaller number.  This is useless if the students are
+   shuffled in the first place.
+ */
+
 int costFun(int s, int o)
 {
 	(void)s;
@@ -117,6 +133,13 @@ int costFun(int s, int o)
 }
 
 
+
+/* Calculate the cost matrix, so that `cost[s][t]` represents the cost
+   of putting student `s` into tutorial `t`.  The cost will be -1 it
+   that assignment is blacklisted.  If the student did not cast enough
+   votes (`offset[s][t]` is -1), then the cost of the firt unused vote
+   is assumed for all subsequent ones.
+ */
 
 void calcOffsetCost(void) {
 	cost = malloc((size_t)students * sizeof(int*));
@@ -146,6 +169,18 @@ void calcOffsetCost(void) {
 
 int *maximum = NULL, *capacity = NULL,
 	*tutorial = NULL, *head = NULL, *prev = NULL, *next = NULL;
+
+/* `tutorial[s]` is the tutorial student `s` is currently assigned to.
+
+   `maximum[t]`, `capacity[t]` is the maximum, and the remaining space
+   in a tutorial `t`.
+
+
+
+   `prev[s]`, `next[s]`
+
+   `head[t]` initially -1
+ */
 
 
 #ifdef DEBUG
@@ -201,8 +236,8 @@ void integrity(void)
 
 
 
-/* This actually performs the relocation of a student, and updates all the
-   data structures.  */
+/* This actually performs the relocation of a student `s` into
+   tutorial `tb`, and updates all the data structures.  */
 
 void move(int const s, int const tb)
 {
@@ -263,8 +298,8 @@ void initialAssignment(void)
 	}
 
 	forStudent(s) {
-		int a = -1;
-		int black[tutors], bc = 0;
+		int a = -1; /* set to tutorial to assign to; -1 = none */
+		int black[tutors], bc = 0; /* stack of blacklisted */
 
 		// Find the cheapest free tutorial to assign the student to
 		forTutor(t) {
