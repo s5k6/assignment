@@ -93,15 +93,21 @@ void readVotes(void)
 					info("line %d: %s: Ignored invalid choice `%s`\n",
 					      lino, name[students], tok);
 				else {
-					vote[k] = black ? -2 : j;
-					j++;
+					if (black)
+						vote[k] = -2;
+					else
+						vote[k] = j++;
 				}
 			}
 			if (tok) info("line %d: %s: Ignored excessive choice `%s`\n",
 			             lino, name[students], tok);
-			if (j < tutors)
-				info("line %d: %s: Extending %d votes\n",
-				     lino, name[students], tutors - j);
+			if (j < tutors) {
+				info("line %d: %s: Extending %d votes to offset=%d\n",
+				     lino, name[students], tutors - j, j);
+				forTutor(k)
+					if (vote[k] == -1)
+						vote[k] = j;
+			}
 
 			students++;
 			if (students == alloc) {
@@ -149,19 +155,14 @@ void calcOffsetCost(void) {
 		cost[s] = malloc((size_t)tutors * sizeof(int));
 		assert(cost[s]);
 
-		int cnt = 0;
 		forTutor(t) {
 			if (offset[s][t] == -2) { // blacklisted
 				cost[s][t] = -1;
-			} else if (offset[s][t] >= 0) {
+			} else {
+				assert(offset[s][t] >= 0);
 				cost[s][t] = costFun(s, offset[s][t]);
-				cnt++;
-			} else
-				assert(offset[s][t] == -1);
+			}
 		}
-		forTutor(t)
-			if (offset[s][t] == -1)
-				cost[s][t] = costFun(s, cnt);
 	}
 }
 
@@ -542,14 +543,24 @@ void statistics(void)
 
 	forTutor(o) offCount[o] = 0;
 
+	int k = 0;
 	forTutor(t) forMember(s,t) {
 		int c = cost[s][t], o = offset[s][t];
 		offCount[o]++;
+		assert(o < tutors);
+		if (o < 0) {
+			info(
+			       "# o = %d\n"
+			       "# cost[%s][%s] = %d\n"
+			       , o, name[s], slot[t], cost[s][t]);
+		}
+		k++;
 		costSum += c;
 		offSum += o;
 		if (c > costMax) costMax = c;
 		if (c < costMin) costMin = c;
 	}
+	assert(k == students);
 
 	costAvg = (double)costSum / students;
 	offAvg = (double)offSum / students;
