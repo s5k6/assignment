@@ -616,26 +616,11 @@ int main(int argc, char **argv)
 
 	printf("# Initial capacities: ");
 	forTutor(t) printf("%s%s=%d", t ? "," : "", slot[t], maximum[t]);
-	printf("\n# WHO\tWHERE\t#N COST\t (VOTE:COST)*\n");
+	printf("\n# WHO\tWHERE\t# N OFFSET COST\n");
 	forStudent(s) {
 		int t = tutorial[s];
 		assert(offset[s][t] != -2);
-		printf("%s\t%s\t#%d %d\t", name[s], slot[t], s, cost[s][t]);
-		int vote[tutors], black[tutors], bc = 0;
-		forTutor(n) vote[n] = -1;
-		forTutor(n) {
-			if (offset[s][n] > -1) vote[offset[s][n]] = n;
-			else if (offset[s][n] == -2) black[bc++] = n;
-		}
-		forTutor(n) {
-			int v = vote[n];
-			if (v > -1) printf(" %s:%d", slot[v], cost[s][v]);
-		}
-		if (bc) {
-			printf("\t!");
-			for (int i = 0; i < bc; i++) printf(" %s", slot[black[i]]);
-		}
-		printf("\n");
+		printf("%s\t%s\t# %d %d %d\n", name[s], slot[t], s, offset[s][t], cost[s][t]);
 	}
 	printf("# Remaining capacities: ");
 	forTutor(t) printf("%s%s=%d", t ? "," : "", slot[t], capacity[t]);
