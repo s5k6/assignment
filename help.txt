@@ -35,7 +35,7 @@ using the next free cost value.  Excessive, repeated, or non-tutorial
 choices raise a warning, and are ignored.
 
 Tutorials following an optional exclamation mark are blacklisted for
-that student, so that the repective student is never moved to that
+that student, so that the respective student is never moved to that
 tutorial.
 
 Comments at the top/bottom of the RESULT file describe the
